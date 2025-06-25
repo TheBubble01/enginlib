@@ -16,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
     isRead: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    expiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     sequelize,

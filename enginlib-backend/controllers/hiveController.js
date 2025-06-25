@@ -70,7 +70,6 @@ exports.createPost = async (req, res) => {
 // Pin a post (admin)
 exports.pinPost = async (req, res) => {
   const { postId } = req.params;
-  const userId = req.user.id;
 
   try {
     const post = await HivePost.findByPk(postId);
@@ -89,27 +88,32 @@ exports.pinPost = async (req, res) => {
     await post.save();
 
     if (newStatus) {
-      // Notify users who opted in
-      const { GroupNotificationPreference, Notification } = require('../models');
+      // ✅ Notify users who opted in
       const optIns = await GroupNotificationPreference.findAll({
         where: { groupId: group.id, pinNotifications: true }
       });
 
+      const creator = await User.findByPk(req.user.id);
+      const expiresAt = new Date(post.createdAt.getTime() + post.lifespan * 60 * 1000);
+
       for (let pref of optIns) {
+        if (pref.userId === req.user.id) continue; // don't notify the admin who pinned
+
         await Notification.create({
           userId: pref.userId,
           postId: post.id,
-          message: `A new post was pinned in ${group.title}.`
+          message: `@${creator.username} pinned a post in ${group.title}.`,
+          isRead: false,
+          expiresAt
         });
       }
     } else {
-      // Remove previous pin notifications
-      const { Notification } = require('../models');
+      // ❌ Remove old pin notifications for this post
       await Notification.destroy({
         where: {
           postId: post.id,
           message: {
-            [require('sequelize').Op.iLike]: '%was pinned%'
+            [Op.iLike]: '%pinned a post%' // match both old and new formats
           }
         }
       });

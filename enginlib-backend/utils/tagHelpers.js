@@ -1,4 +1,4 @@
-const { User, Notification } = require('../models');
+const { User, Notification, HivePost, HiveReply } = require('../models');
 
 /**
  * Detect @username mentions in text
@@ -25,6 +25,29 @@ async function notifyMentions({ content, sourceUserId, postId = null, replyId = 
   const sourceUser = await User.findByPk(sourceUserId);
   if (!sourceUser) return;
 
+  // Determine lifespan and createdAt from post or reply
+  let createdAt = new Date();
+  let lifespan = 129600; // Default: 3 months in minutes
+
+  if (postId) {
+    const post = await HivePost.findByPk(postId);
+    if (post) {
+      createdAt = post.createdAt || createdAt;
+      lifespan = post.lifespan || lifespan;
+    }
+  } else if (replyId) {
+    const reply = await HiveReply.findByPk(replyId);
+    if (reply) {
+      const post = await HivePost.findByPk(reply.postId);
+      if (post) {
+        createdAt = post.createdAt || createdAt;
+        lifespan = post.lifespan || lifespan;
+      }
+    }
+  }
+
+  const expiresAt = new Date(createdAt.getTime() + lifespan * 60 * 1000);
+
   for (let username of usernames) {
     const mentionedUser = await User.findOne({ where: { username } });
     if (!mentionedUser || mentionedUser.id === sourceUserId) continue;
@@ -33,7 +56,9 @@ async function notifyMentions({ content, sourceUserId, postId = null, replyId = 
       userId: mentionedUser.id,
       postId,
       replyId,
-      message: `@${sourceUser.username} mentioned you in a ${replyId ? 'reply' : 'post'}.`
+      message: `@${sourceUser.username} mentioned you in a ${replyId ? 'reply' : 'post'}.`,
+      isRead: false,
+      expiresAt
     });
   }
 }
